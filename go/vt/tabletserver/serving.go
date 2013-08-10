@@ -1,20 +1,18 @@
-package vttablet
+package tabletserver
 
 import (
 	"flag"
+	"io/ioutil"
 
 	log "github.com/golang/glog"
 	"github.com/youtube/vitess/go/jscfg"
-	"github.com/youtube/vitess/go/rpcwrap/bsonrpc"
-	"github.com/youtube/vitess/go/rpcwrap/jsonrpc"
-	"github.com/youtube/vitess/go/vt/dbconfigs"
-	ts "github.com/youtube/vitess/go/vt/tabletserver"
 )
 
 var (
 	queryLogHandler = flag.String("query-log-stream-handler", "/debug/querylog", "URL handler for streaming queries log")
 	txLogHandler    = flag.String("transaction-log-stream-handler", "/debug/txlog", "URL handler for streaming transactions log")
 	qsConfigFile    = flag.String("queryserver-config-file", "", "config file name for the query service")
+	customRules     = flag.String("customrules", "", "custom query rules file")
 )
 
 // DefaultQSConfig is the default value for the query service config.
@@ -25,7 +23,7 @@ var (
 // memory copies.  so with the encoding overhead, this seems to work
 // great (the overhead makes the final packets on the wire about twice
 // bigger than this).
-var DefaultQsConfig = ts.Config{
+var DefaultQsConfig = Config{
 	PoolSize:           16,
 	StreamPoolSize:     750,
 	TransactionCap:     20,
@@ -39,21 +37,11 @@ var DefaultQsConfig = ts.Config{
 	RowCache:           nil,
 }
 
-func ServeAuthRPC() {
-	bsonrpc.ServeAuthRPC()
-	jsonrpc.ServeAuthRPC()
-}
-
-func ServeRPC() {
-	jsonrpc.ServeHTTP()
-	jsonrpc.ServeRPC()
-	bsonrpc.ServeHTTP()
-	bsonrpc.ServeRPC()
-}
-
-func InitQueryService(dbcfgs dbconfigs.DBConfigs) {
-	ts.SqlQueryLogger.ServeLogs(*queryLogHandler)
-	ts.TxLogger.ServeLogs(*txLogHandler)
+// InitQueryService registers the query service, after loading any
+// necessary config files. It also starts any relevant streaming logs.
+func InitQueryService() {
+	SqlQueryLogger.ServeLogs(*queryLogHandler)
+	TxLogger.ServeLogs(*txLogHandler)
 
 	qsConfig := DefaultQsConfig
 	if *qsConfigFile != "" {
@@ -62,5 +50,25 @@ func InitQueryService(dbcfgs dbconfigs.DBConfigs) {
 		}
 	}
 
-	ts.RegisterQueryService(qsConfig)
+	RegisterQueryService(qsConfig)
+}
+
+// LoadCustomRules returns custom rules as specified by the command
+// line flags.
+func LoadCustomRules() (qrs *QueryRules) {
+	if *customRules == "" {
+		return NewQueryRules()
+	}
+
+	data, err := ioutil.ReadFile(*customRules)
+	if err != nil {
+		log.Fatalf("Error reading file %v: %v", *customRules, err)
+	}
+
+	qrs = NewQueryRules()
+	err = qrs.UnmarshalJSON(data)
+	if err != nil {
+		log.Fatalf("Error unmarshaling query rules %v", err)
+	}
+	return qrs
 }

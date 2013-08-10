@@ -312,7 +312,7 @@ class VtoccTestEnv(TestEnv):
       config = self.mysqldir+"/config.json"
       with open(config, 'w') as f:
         json.dump({"RowCache": ["memcached", "-s", memcache]}, f)
-      occ_args.extend(["-config", config])
+      occ_args.extend(["-queryserver-config-file", config])
 
     self.vtstderr = open("/tmp/vtocc_stderr.log", "a+")
     self.vtocc = subprocess.Popen(occ_args, stderr=self.vtstderr)
@@ -321,6 +321,7 @@ class VtoccTestEnv(TestEnv):
         self.conn = self.connect()
         self.txlogger = subprocess.Popen(['curl', '-s', '-N', 'http://localhost:9461/debug/txlog'], stdout=open('/tmp/vtocc_txlog.log', 'w'))
         self.txlog = framework.Tailer(open('/tmp/vtocc_txlog.log', 'r'))
+
         def flush():
           utils.run(['curl', '-s', '-N', 'http://localhost:9461/debug/flushlogs'], trap_output=True)
 
